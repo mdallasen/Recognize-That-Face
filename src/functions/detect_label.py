@@ -7,7 +7,8 @@ import tensorflow as tf
 from retinaface import RetinaFace
 from tensorflow.keras.preprocessing.image import img_to_array
 
-def extract_faces_and_labels(dataset_path):   
+def detect_label(dataset_path): 
+
     data = [] 
     size = (160, 160)
 
@@ -23,22 +24,20 @@ def extract_faces_and_labels(dataset_path):
                     print(f"Warning: Unable to read {image_path}")
                     continue  
                 
-                faces = RetinaFace.detect_faces(image_path)
+                faces = RetinaFace.detect_faces(img) if img is not None else None  
 
-                if not faces: 
+                if faces is None or len(faces) == 0: 
                     print(f"Warning: No face detected in {image_path}")
                     continue
 
-                for faces_id, face_info in faces.items():
-                    facial_area = face_info["facial_area"]
-                    x1, y1, x2, y2 = facial_area
+                for _, face_info in faces.items():
+                    x1, y1, x2, y2 = face_info["facial_area"]
 
                     face = img[y1:y2, x1:x2]
                     face = cv2.resize(face, size)
                     face_array = img_to_array(face) / 255.0  
                     face_array = np.array(face_array, dtype=np.float32)
                     data.append((image_path, label, face_array))
-                    
 
     data = pd.DataFrame(data, columns=["image_path", "label", "face_array"])
     
