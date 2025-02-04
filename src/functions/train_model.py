@@ -3,12 +3,12 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Dropout
 from sklearn.model_selection import train_test_split
-from functions.detect_label import detect_label
+from detect_label import detect_label
 from sklearn.preprocessing import LabelEncoder
 import pickle
 
 # Load dataset
-dataset_path = "dataset"
+dataset_path = "src/dataset"
 data = detect_label(dataset_path)
 
 # Extract features and labels
