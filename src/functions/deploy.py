@@ -2,25 +2,13 @@ from tensorflow.keras.models import load_model
 import pickle
 import cv2
 import numpy as np
-from functions.detect_label import detect_label
 from retinaface import RetinaFace
 
-# Load trained model and label encoder
-train_model = load_model("face_recognition_model.h5")
-X_deploy = np.load("X_deploy.npy")
-
-with open("label_encoder.pkl", "rb") as f: 
-    label_encoder = pickle.load(f)
-
 def recognize(data, model, label_encoder): 
-
-    data = detect_label(data)
-
     for index, row in data.iterrows():
-
         # Extract variables 
         image_path = row["image_path"]
-        face_array = np.expand_dims(row["face_array"], axis = 0)
+        face_array = np.expand_dims(row["face_array"], axis=0)
 
         # Predict class
         predict = model.predict(face_array)
@@ -47,6 +35,3 @@ def recognize(data, model, label_encoder):
         cv2.imshow("Face Recognition", img)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-
-# Run recognition
-recognize(X_deploy, train_model, label_encoder)

@@ -1,0 +1,30 @@
+# General settings
+dataset_path: "src/dataset"  # Path to the dataset
+test_image: "models/test_image.npy"  # Sample image for testing face detection & embeddings
+
+# Model settings
+model_path: "src/models/face_recognition_model.h5"  # Path to save trained model
+encoder_path: "models/label_encoder.pkl"  # Path to save label encoder
+input_shape: [160, 160, 3]  # Input image dimensions
+num_classes: 10  # Number of classes (set dynamically in train_model.py)
+
+# Training parameters
+batch_size: 32
+epochs: 10
+learning_rate: 0.001
+optimizer: "adam"
+loss_function: "sparse_categorical_crossentropy"
+
+# Data processing
+image_size: [160, 160]  # Resizing dimensions for images
+normalization: True  # Whether to normalize pixel values (0-1)
+augmentation: True  # Whether to apply data augmentation
+
+# Output directories
+results_path: "results/"  # Folder to store results
+deploy_data_path: "datasets/"  # Folder to save deploy dataset
+
+# Logging settings
+log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+save_logs: True  # Whether to save logs to a file
+log_file: "logs/pipeline.log"  # Path to save logs
