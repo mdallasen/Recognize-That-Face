@@ -3,7 +3,7 @@ dataset_path: "src/dataset"  # Path to the dataset
 test_image: "models/test_image.npy"  # Sample image for testing face detection & embeddings
 
 # Model settings
-model_path: "src/models/face_recognition_model.h5"  # Path to save trained model
+model_path: "models/face_recognition_model.h5"  # Path to save trained model
 encoder_path: "models/label_encoder.pkl"  # Path to save label encoder
 input_shape: [160, 160, 3]  # Input image dimensions
 num_classes: 10  # Number of classes (set dynamically in train_model.py)
