@@ -79,10 +79,3 @@ JURASSIC-PARK-RECOGNITION/
 │── README.md              # Project documentation
 │── requirements.txt        # Python package dependencies
 ```
-
-## License
-This project is open-source and licensed under the **MIT License**.
-
----
-### ⭐️ **If you find this project useful, please star this repository!** 🚀
-

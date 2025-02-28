@@ -1,54 +1,81 @@
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Dropout
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 import pickle
-import os
-from functions.detect import detect_label 
-from functions.utils import save_model, load_config
-from models.CNN import CNN
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from functions.load import detect_label
+from models.model import CNN 
 
-# Load dataset
-def load_dataset(dataset_path):
-    data = detect_label(dataset_path)
+class Training: 
+    def __init__(self, data, labels): 
+        self.data = data
+        self.labels = labels
 
-    # Extract features and labels
-    X = np.array(data["face_array"].tolist()).astype("float32")
+    def generate_triplets(self, data, labels, num_triplets = 200):
+        """
+        Generates (Anchor, Positive, Negative) triplets for training.
 
-    # Encode labels
-    label_encoder = LabelEncoder()
-    y = label_encoder.fit_transform(data["label"])
+        :param num_triplets: Number of triplets to generate (default: 1000).
+        :return: Three numpy arrays (anchors, positives, negatives).
+        """
+        
+        unique_labels = np.unique(labels)
+        label_dict = {label: np.where(labels == label)[0] for label in unique_labels}
 
-    # Split dataset
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
-    X_deploy, X_test, y_deploy, y_test = train_test_split(X_test, y_test, test_size=0.5, stratify=y_test, random_state=42)
+        total_images = sum(len(indices) for indices in label_dict.values())
 
-    # Save data for deployment
-    np.save("models/X_deploy.npy", X_deploy)
-    np.save("models/y_deploy.npy", y_deploy)
+        if num_triplets > total_images:
+            raise ValueError(f"Not enough data to generate {num_triplets} triplets.")
+        
+        anchors, positives, negatives = [], [], []
 
-    return X_train, X_test, y_train, y_test, label_encoder
+        for _ in range(num_triplets): 
 
-def train(config):
-    dataset_path = config["dataset_path"]
-    model_path = config["model_path"]
-    encoder_path = config["encoder_path"]
+            anchor_label = np.random.choice(unique_labels)
+            anchor_idx = np.random.choice(label_dict[anchor_label])
+            possible_positives = np.setdiff1d(label_dict[anchor_label], anchor_idx)
 
-    X_train, X_test, y_train, y_test, label_encoder = load_dataset(dataset_path)
+            if len(possible_positives) == 0:
+                continue 
+            
+            positive_idx = np.random.choice(possible_positives)
+            negative_label = np.random.choice(unique_labels[unique_labels != anchor_label])
+            negative_idx = np.random.choice(label_dict[negative_label])
 
-    model = CNN(input_shape=(160, 160, 3), num_classes=len(label_encoder.classes_))
+            anchors.append(data[anchor_idx])
+            positives.append(data[positive_idx])
+            negatives.append(data[negative_idx])
+    
+        return np.array(anchors), np.array(positives), np.array(negatives) 
 
-    # Compile
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=["accuracy"])
+    def train(self, config):
 
-    # Train model 
-    model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test))
+        X_train, X_test, y_train, y_test = train_test_split(self.data, self.labels, 
+            test_size = 0.2, random_state = 42)
 
-    # Save model
-    model.save(model_path)
+        anchors_train, positives_train, negatives_train = self.generate_triplets(X_train, y_train)
+        anchors_test, positives_test, negatives_test = self.generate_triplets(X_test, y_test)
 
-    # Save encoder
-    with open(encoder_path, "wb") as f:
-        pickle.dump(label_encoder, f)
+        model_path = config["model_path"]
+        encoder_path = config["encoder_path"]
+
+        model = FaceModel()
+        triplet_model = model.triplet_network()
+
+        triplet_model.compile(optimizer='adam', loss = model.triplet_loss)
+
+        triplet_model.fit(
+            [anchors_train, positives_train, negatives_train],
+            np.zeros((anchors_train.shape[0], 1)), 
+            epochs = 10, 
+            batch_size = 32, 
+            validation_data=([anchors_test, positives_test, negatives_test], np.zeros((anchors_test.shape[0], 1)))
+        )
+
+        
+
+
+
+
+    
+
+
