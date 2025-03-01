@@ -1,9 +1,6 @@
 import numpy as np
-import pickle
-from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from functions.load import detect_label
-from models.model import CNN 
+from functions.model import FaceModel
 
 class Training: 
     def __init__(self, data, labels): 
@@ -49,14 +46,13 @@ class Training:
 
     def train(self, config):
 
+        model_path = config.get("model_path", "src/models/face_recognition_model.h5")
+
         X_train, X_test, y_train, y_test = train_test_split(self.data, self.labels, 
             test_size = 0.2, random_state = 42)
 
         anchors_train, positives_train, negatives_train = self.generate_triplets(X_train, y_train)
         anchors_test, positives_test, negatives_test = self.generate_triplets(X_test, y_test)
-
-        model_path = config["model_path"]
-        encoder_path = config["encoder_path"]
 
         model = FaceModel()
         triplet_model = model.triplet_network()
@@ -66,16 +62,13 @@ class Training:
         triplet_model.fit(
             [anchors_train, positives_train, negatives_train],
             np.zeros((anchors_train.shape[0], 1)), 
-            epochs = 10, 
-            batch_size = 32, 
-            validation_data=([anchors_test, positives_test, negatives_test], np.zeros((anchors_test.shape[0], 1)))
+            epochs=10, 
+            batch_size=32, 
+            validation_data=(
+                [anchors_test, positives_test, negatives_test], 
+                np.zeros((anchors_test.shape[0], 1))
+            )
         )
 
-        
-
-
-
-
-    
-
-
+        triplet_model.save(model_path)
+        print(f"Model saved successfully at: {model_path}")

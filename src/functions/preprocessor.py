@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from mtcnn import MTCNN
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
 import pickle
 
 class Preprocessor: 
@@ -19,35 +20,32 @@ class Preprocessor:
         self.labels = []
         self.face_detector = MTCNN()
 
-    def load(self): 
-        """
-        Loads images and labels from the dataset folder, detects faces, and stores processed data.
-        """
-
-        if not self.dataset_path: 
+    def load(self):
+        """Loads images, detects faces, and processes them correctly."""
+        if not self.dataset_path:
             raise ValueError("Dataset path not found")
-        
-        for label in os.listdir(self.dataset_path): 
-            
-            label_path = os.path.join(self.dataset_path, label) 
 
-            if os.path.isdir(label_path): 
+        for label in os.listdir(self.dataset_path):
+            label_path = os.path.join(self.dataset_path, label)
+            if not os.path.isdir(label_path):
+                continue
 
-                for image_file in os.listdir(label_path): 
-                    
-                    image_path = os.path.join(label_path, image_file)
-                    img = cv2.imread(image_path)
+            for image_file in os.listdir(label_path):
+                image_path = os.path.join(label_path, image_file)
+                img = cv2.imread(image_path)
 
-                    if img is None: 
-                        print(f"Warning: Unable to read {image_path}")
-                        continue 
-                
-                    face = self.face_detector.detect_faces(img)
+                if img is None:
+                    print(f"Warning: Unable to read {image_path}")
+                    continue
 
-                    if face is not None: 
-                        self.data.append(face)
-                        self.labels.append(label)
-            
+                faces = self.face_detector.detect_faces(img)
+                for det in faces:
+                    x, y, w, h = det["box"]
+                    cropped_face = img[y:y+h, x:x+w]
+                    cropped_face = cv2.resize(cropped_face, (160, 160))  # Ensure correct input size
+                    self.data.append(cropped_face)
+                    self.labels.append(label)
+
         print(f"Loaded {len(self.data)} images with detected faces.")
 
 
@@ -61,7 +59,7 @@ class Preprocessor:
         """
 
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        faces = self.detect_faces(img_rgb)
+        faces = self.face_detector.detect_faces(img_rgb)
 
         if len(faces) > 0: 
             x, y, w, h = faces[0]["box"]
@@ -90,12 +88,14 @@ class Preprocessor:
 
         print(f"Label encoder saved to {save_path}.")
 
-    def save_processed_data(self, save_path = "processed_faces.npy"): 
-
-        if not self.data: 
+    def save_processed_data(self, train_path="results/faces_train_test.npy", deploy_path="results/faces_deploy"):
+        if not self.data:
             raise ValueError("No face data found")
+        
+        deploy_data, train_data, deploy_encoded_labels, train_encoded_labels = train_test_split(
+            self.data, self.encoded_labels, test_size=0.2, stratify=self.encoded_labels, random_state=42
+        )
 
-        np.savez(save_path, faces = np.array(self.data), labels = np.array(self.encoded_labels))
-
-        print(f"Processed data saved to {save_path}")
+        np.savez(deploy_path, faces=np.array(deploy_data), labels=np.array(deploy_encoded_labels))
+        np.savez(train_path, faces=np.array(train_data), labels=np.array(train_encoded_labels))
     
