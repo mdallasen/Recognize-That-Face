@@ -1,93 +1,124 @@
 import numpy as np
+import cv2
+import os
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+from mtcnn import MTCNN  # Face detector
+from sklearn.metrics.pairwise import cosine_similarity
 from tensorflow.keras.models import load_model
 
 class Deployer:
-    def __init__(self, model_path="triplet_model.h5", encoder_path="face_encoder.h5"):
+    def __init__(self, model_path="triplet_model.h5", encoder_path="face_encoder.h5", deploy_data_path="results/faces_deploy.npz", results_folder="results/"):
         """
-        Loads the trained model and encoder for inference.
+        Loads the trained model, encoder, and deploy dataset.
         :param model_path: Path to the trained triplet model.
         :param encoder_path: Path to the encoder model.
+        :param deploy_data_path: Path to stored face embeddings.
+        :param results_folder: Folder to save processed images.
         """
         print("Loading the trained model and encoder...")
         self.model = load_model(model_path)
         self.encoder = load_model(encoder_path)
-        print("Model successfully loaded.")
+        self.detector = MTCNN()  # Initialize face detector
+        self.results_folder = results_folder
 
-    def generate_embedding(self, image):
+        # Ensure results folder exists
+        os.makedirs(results_folder, exist_ok=True)
+
+        # Load reference dataset (known faces and labels)
+        deploy_data = np.load(deploy_data_path)
+        self.reference_images = deploy_data["faces"]
+        self.reference_labels = deploy_data["labels"]
+        self.reference_embeddings = self.batch_generate_embeddings(self.reference_images)
+
+        print("Model and face dataset successfully loaded.")
+
+    def detect_faces(self, image):
         """
-        Generates an embedding for a given image.
-        :param image: Input image (preprocessed).
-        :return: Embedding vector.
+        Detects faces in an image and returns cropped faces with bounding boxes.
         """
-        image = np.expand_dims(image, axis=0) 
-        embedding = self.encoder.predict(image)[0]  
+        detections = self.detector.detect_faces(image)
+        faces = []
+        boxes = []
+
+        for det in detections:
+            x, y, w, h = det["box"]
+            face = image[y:y+h, x:x+w]
+            face = cv2.resize(face, (160, 160))  # Resize for model
+            faces.append(face)
+            boxes.append((x, y, w, h))
+
+        return faces, boxes
+
+    def generate_embedding(self, face):
+        """
+        Generates an embedding for a given face.
+        """
+        face = face.astype("float32") / 255.0  # Normalize pixel values
+        face = np.expand_dims(face, axis=0)
+        embedding = self.encoder.predict(face)[0]
         return embedding
-
-    def verify_faces(self, image1, image2, threshold=0.5, metric="cosine"):
-        """
-        Compares two face images and determines if they belong to the same person.
-        :param image1: First image (preprocessed).
-        :param image2: Second image (preprocessed).
-        :param threshold: Similarity threshold for verification.
-        :param metric: Distance metric ("cosine" or "euclidean").
-        :return: Boolean indicating whether the faces match.
-        """
-        emb1 = self.generate_embedding(image1)
-        emb2 = self.generate_embedding(image2)
-
-        if metric == "cosine":
-            similarity = cosine_similarity([emb1], [emb2])[0][0]
-            return similarity > threshold, similarity
-        elif metric == "euclidean":
-            distance = euclidean_distances([emb1], [emb2])[0][0]
-            return distance < threshold, distance
-        else:
-            raise ValueError("Invalid metric. Choose 'cosine' or 'euclidean'.")
 
     def batch_generate_embeddings(self, images):
         """
-        Generates embeddings for a batch of images.
-        :param images: List or batch of preprocessed images.
-        :return: Numpy array of embeddings.
+        Generates embeddings for multiple images.
         """
-        return self.encoder.predict(np.array(images))
-    
-    def find_nearest_neighbors(self, query_image, reference_images, reference_labels, top_k=5):
-        """
-        Finds the closest matching images from a reference set.
-        """
-        query_embedding = self.generate_embedding(query_image)
-        ref_embeddings = self.batch_generate_embeddings(reference_images)
+        images = np.array(images).astype("float32") / 255.0
+        return self.encoder.predict(images)
 
-        distances = np.linalg.norm(ref_embeddings - query_embedding, axis=1)
-        closest_indices = np.argsort(distances)[:top_k]
-        closest_labels = [reference_labels[i] for i in closest_indices]
-        
-        return closest_labels 
-
-    def visualize_matches(self, query_image, reference_images, reference_labels, top_k=5):
+    def classify_face(self, face):
         """
-        Displays the query image alongside its closest matches.
-        :param query_image: The input image.
-        :param reference_images: Dataset of reference images.
-        :param reference_labels: Corresponding labels.
-        :param top_k: Number of matches to display.
+        Identifies the closest match for a given face.
         """
-        closest_indices = self.find_nearest_neighbors(query_image, reference_images, reference_labels, top_k)
+        face_embedding = self.generate_embedding(face)
+        similarities = cosine_similarity([face_embedding], self.reference_embeddings)[0]
+        best_match_idx = np.argmax(similarities)
+        best_match_label = self.reference_labels[best_match_idx]
+        best_match_score = similarities[best_match_idx]
 
-        plt.figure(figsize=(10, 5))
-        plt.subplot(1, top_k + 1, 1)
-        plt.imshow(query_image.squeeze(), cmap="gray")
-        plt.title("Query Image")
+        return best_match_label, best_match_score
+
+    def recognize_faces(self, image):
+        """
+        Detects faces in an image, classifies them, and draws bounding boxes.
+        """
+        faces, boxes = self.detect_faces(image)
+
+        for face, (x, y, w, h) in zip(faces, boxes):
+            label, score = self.classify_face(face)
+
+            # Draw bounding box
+            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+            # Display name and confidence score
+            text = f"{label} ({score:.2f})"
+            cv2.putText(image, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        return image
+
+    def show_recognition(self, image_path, save_output=True):
+        """
+        Reads an image, recognizes faces, saves, and displays the result.
+        :param image_path: Path to the image file.
+        :param save_output: Whether to save the processed image.
+        """
+        image = cv2.imread(image_path)
+        if image is None:
+            print(f"Error: Cannot load image {image_path}")
+            return
+
+        image = self.recognize_faces(image)
+
+        # Save the processed image
+        if save_output:
+            output_path = os.path.join(self.results_folder, os.path.basename(image_path))
+            cv2.imwrite(output_path, image)
+            print(f"Processed image saved at: {output_path}")
+
+        # Convert to RGB for correct display in matplotlib
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        plt.figure(figsize=(8, 6))
+        plt.imshow(image_rgb)
         plt.axis("off")
-
-        for i, idx in enumerate(closest_indices):
-            plt.subplot(1, top_k + 1, i + 2)
-            plt.imshow(reference_images[idx].squeeze(), cmap="gray")
-            plt.title(f"Match {i+1}\nLabel: {reference_labels[idx]}")
-            plt.axis("off")
-
+        plt.title("Face Recognition Results")
         plt.show()
